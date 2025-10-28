@@ -228,8 +228,8 @@
                 // Simple Furniture
                 { type: 'wall', x: 20, y: 20, width: 5, height: 10, color: '#9333ea' }, // Table
                 { type: 'wall', x: 80, y: 80, width: 5, height: 5, color: '#f97316' }, // Chair
-                // Exit point
-                { type: 'exit', id: 'main_exit', targetMap: 'main', targetX: 20, targetY: 30, x: 50, y: 90, radius: 4, label: 'Exit' } 
+                // Exit point - TARGETX/Y UPDATED TO PREVENT RE-ENTRY GLITCH
+                { type: 'exit', id: 'main_exit', targetMap: 'main', targetX: 10, targetY: 50, x: 50, y: 90, radius: 4, label: 'Exit' } 
             ],
             elderDot: null, 
             backgroundColor: '#4B5563' 
@@ -453,10 +453,10 @@
 
         try {
             // Apply the bump movement directly to the target's coordinates
-            // Use updateDoc to ensure we don't overwrite other fields, though setDoc merge is safer
+            // Use setDoc merge to ensure we don't overwrite other fields
             await firebase.setDoc(targetRef, { 
-                x: target.x + dx, 
-                y: target.y + dy, 
+                x: (otherPlayers[targetId]?.x || 50) + dx, // Use current known position
+                y: (otherPlayers[targetId]?.y || 50) + dy,
                 lastActive: firebase.serverTimestamp()
             }, { merge: true });
             log(`[Stick] You BUMPED ${otherPlayers[targetId]?.username || targetId.substring(0, 4)}!`, 'stick');
@@ -831,23 +831,21 @@
             const itemCenterDist = distance(localPlayerState.x, localPlayerState.y, item.x, item.y);
             const clickCenterDist = distance(worldClickX, worldClickY, item.x, item.y);
             
+            // Check if both the player AND the click are close to the transition point
             if (itemCenterDist < PROXIMITY_RADIUS && clickCenterDist < PROXIMITY_RADIUS) {
                 if (item.type === 'house' && item.id === 'house1_entry' && localPlayerState.mapId === 'main') {
+                    // Entering the house
                     teleportPlayer('house1', 50, 80); 
                     log(`[System] Entering house. Welcome inside!`, 'system');
                     wasTeleportAttempted = true;
                     return;
                 } else if (item.type === 'exit' && item.targetMap && localPlayerState.mapId === 'house1') {
+                    // Exiting the house
                     teleportPlayer(item.targetMap, item.targetX, item.targetY); 
                     log(`[System] Exiting to ${item.targetMap}.`, 'system');
                     wasTeleportAttempted = true;
                     return;
                 }
-            } else if (item.type === 'house' || item.type === 'exit') {
-                 // Log error only if the click was far AND the player was far.
-                 if (clickCenterDist > PROXIMITY_RADIUS || itemCenterDist > PROXIMITY_RADIUS) {
-                    // console.error(`Entry Failed. Player or Click too far. Player Dist: ${itemCenterDist.toFixed(2)}, Click Dist: ${clickCenterDist.toFixed(2)}`);
-                 }
             }
         }
         
