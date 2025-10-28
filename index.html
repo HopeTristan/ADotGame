@@ -62,14 +62,14 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- 1. FIREBASE CONFIGURATION (CRUCIAL!) ---
-        // These keys were provided by the user and are now installed.
+        // Using the configuration from your LATEST app:
         const EXTERNAL_FIREBASE_CONFIG = {
             apiKey: "AIzaSyAkDCeZk9K90FQTKpQYKNPgaGeIPJnn3dM", 
             authDomain: "dotgame-ece62.firebaseapp.com",
             projectId: "dotgame-ece62",
             storageBucket: "dotgame-ece62.firebasestorage.app",
             messagingSenderId: "1040721380661",
-            appId: "1:1040721380661:web:e60a7458573b1c46f1787c"
+            appId: "1:1040721380661:web:97c7b783e206e6f1f1787c" // <-- CORRECTED APP ID
         };
         // ---------------------------------------------
         
@@ -104,7 +104,10 @@
 
         const initializeFirebase = async () => {
             try {
-                app = initializeApp(firebaseConfig);
+                // Determine which configuration to use
+                const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : EXTERNAL_FIREBASE_CONFIG;
+                
+                app = initializeApp(configToUse);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
@@ -133,14 +136,15 @@
                         document.getElementById('game-status').classList.add('bg-green-600');
                         document.getElementById('status-message').textContent = "Connected!";
                     } else {
-                        console.error("Authentication failed.");
+                        console.error("Authentication failed: User object is null.");
                         isAuthReady = false;
                     }
                 });
 
             } catch (e) {
-                console.error("Firebase initialization error:", e);
-                document.getElementById('status-message').textContent = "Error: See Console.";
+                console.error("Firebase initialization or auth error:", e);
+                // Update status message with a more detailed error prompt
+                document.getElementById('status-message').textContent = `Error: Invalid config or Anonymous Auth disabled. See console.`;
                 document.getElementById('game-status').classList.add('bg-red-600');
             }
         };
@@ -160,10 +164,10 @@
                 await setDoc(playerDocRef, {
                     x: x,
                     y: y,
-                    timestamp: serverTimestamp() // Helps clean up old players later
+                    timestamp: serverTimestamp() 
                 });
             } catch (e) {
-                console.error("Error updating position:", e);
+                console.error("Error updating position (often a Security Rule issue):", e);
             }
         };
 
