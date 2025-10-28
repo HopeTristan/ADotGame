@@ -3,1042 +3,345 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dot Drift - Global Multiplayer Game</title>
-    <!-- Load Tailwind CSS -->
+    <title>Dot Drift: Multiplayer</title>
+    <!-- Load Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        /* Custom styles for a clean, full-screen game experience */
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827; /* Dark background */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            color: white;
-            padding: 0;
-            margin: 0;
-            overflow: hidden; /* Prevent body scroll */
-        }
-        .game-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 95%;
-            max-width: 1000px;
-            margin: auto;
-            border-radius: 1rem;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-            background-color: #1f2937;
-            padding: 1rem;
-        }
-        #game-canvas {
-            background-color: #27303f; /* Slightly lighter inner game space */
-            cursor: pointer;
-            border-radius: 0.5rem;
-            border: 2px solid #374151;
-            width: 100%;
-            height: calc(100vw * 0.5); /* Maintain aspect ratio (2:1) */
-            max-height: 50vh;
-            transition: border-color 0.2s;
-        }
-        #game-canvas:hover {
-            border-color: #6366f1;
-        }
-        .chat-input-area {
-            display: flex;
-            width: 100%;
-            margin-top: 1rem;
-        }
-        .chat-input {
-            flex-grow: 1;
-            padding: 0.75rem;
-            border-radius: 0.5rem 0 0 0.5rem;
-            border: 1px solid #4b5563;
-            background-color: #374151;
-            color: white;
-        }
-        .chat-send-btn {
-            padding: 0.75rem 1.5rem;
-            background-color: #4f46e5;
-            color: white;
-            font-weight: 600;
-            border-radius: 0 0.5rem 0.5rem 0;
-            transition: background-color 0.2s;
-        }
-        .chat-send-btn:hover {
-            background-color: #4338ca;
-        }
-        .log-box {
-            height: 100px;
-            overflow-y: auto;
-            border: 1px solid #4b5563;
-            background-color: #374151;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            margin-top: 1rem;
-            font-size: 0.875rem;
-        }
-        .user-input {
-            padding: 0.25rem 0.5rem;
-            border-radius: 0.25rem;
-            border: 1px solid #4b5563;
-            background-color: #374151;
-            color: white;
-            max-width: 150px;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #0d1117; min-height: 100vh; }
+        .game-container { background-color: #161b22; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+        .chat-box { background-color: #21262d; border-radius: 0.75rem; }
     </style>
-    <!-- Firebase Imports -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, collection, query, serverTimestamp, getDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Expose Firebase functions globally for use in the script below
-        window.firebase = {
-            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-            getFirestore, doc, onSnapshot, setDoc, collection, query, serverTimestamp, setLogLevel, getDoc
-        };
-    </script>
 </head>
-<body onload="initApp()">
+<body class="p-4 md:p-8 flex flex-col lg:flex-row gap-6 items-center justify-center">
 
-    <div class="game-container">
-        
-        <!-- Player Info and Color Picker -->
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center w-full mb-4 px-2 space-y-2 sm:space-y-0">
-            <div class="flex items-center space-x-2">
-                <span class="text-sm text-gray-400">ID: <span id="player-id">Loading...</span></span>
-                <span id="stick-status" class="text-sm font-semibold ml-4 text-orange-400"></span>
-            </div>
-            
-            <!-- Username Input -->
-            <div class="flex items-center space-x-2">
-                <label for="username-input" class="text-sm font-medium">Username:</label>
-                <input type="text" id="username-input" placeholder="Set your name" class="user-input" maxlength="12">
-            </div>
-
-            <!-- Color Picker -->
-            <div class="flex items-center space-x-2">
-                <label for="color-picker" class="text-sm font-medium">My Color:</label>
-                <input type="color" id="color-picker" value="#4f46e5" class="w-8 h-8 rounded-full border-none p-0 cursor-pointer">
+    <div class="w-full max-w-lg lg:max-w-4xl space-y-4">
+        <!-- Header and Status Panel -->
+        <div class="bg-gray-800 p-4 rounded-xl shadow-lg">
+            <h1 class="text-4xl font-extrabold text-blue-400 mb-1">Dot Drift: Global Multiplayer</h1>
+            <p class="text-gray-400 text-sm">Real-time collaboration across the canvas.</p>
+            <div id="game-status" class="flex justify-between items-center p-3 mt-3 rounded-lg bg-yellow-600 text-white animate-pulse transition duration-500">
+                <span class="font-bold">STATUS: <span id="status-message">Initializing Firebase...</span></span>
+                <span class="text-sm">Players Online: <span id="player-count" class="font-extrabold text-xl ml-1">...</span></span>
             </div>
         </div>
-        
-        <!-- Game Canvas -->
-        <canvas id="game-canvas"></canvas>
 
-        <!-- Status Log -->
-        <div id="log" class="log-box w-full text-gray-400">
-            [System] **Movement:** W/A/S/D or Arrows. **Feature:** Find the spinning stick near a tree!
+        <!-- Game Canvas and User Info -->
+        <div class="game-container rounded-xl overflow-hidden p-2" style="height: 60vh;">
+            <canvas id="gameCanvas" class="bg-gray-900"></canvas>
         </div>
-        
-        <!-- Chat Input -->
-        <div class="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Say something to the world (Press / to focus)..." class="chat-input" maxlength="100">
-            <button id="send-btn" class="chat-send-btn">Send</button>
+
+        <!-- User/ID Info -->
+        <div class="bg-gray-800 p-4 rounded-xl shadow-lg text-sm text-gray-400">
+            <p class="font-semibold text-white mb-1">Your ID (Share this to play with others):</p>
+            <code id="user-id-display" class="block w-full bg-gray-700 p-2 rounded text-xs text-green-400 break-words">Loading...</code>
         </div>
     </div>
     
-<script>
-    // --- GLOBAL FIREBASE VARIABLES ---
-    let db, auth;
-    let userId = 'loading';
-    let appId = 'default-app-id'; 
+    <!-- Chat Box -->
+    <div class="w-full max-w-sm lg:max-w-xs h-[500px] lg:h-[750px] flex flex-col shadow-2xl">
+        <div class="bg-blue-600 text-white p-3 rounded-t-xl font-bold">Live Chat</div>
+        <div id="chat-messages" class="chat-box flex-grow p-3 overflow-y-auto space-y-2 text-sm">
+            <!-- Chat messages appear here -->
+        </div>
+        <form id="chat-form" class="flex p-3 bg-gray-700 rounded-b-xl">
+            <input type="text" id="chat-input" placeholder="Type a message..." required
+                   class="flex-grow p-2 rounded-l-lg border border-gray-600 bg-gray-800 text-white focus:outline-none">
+            <button type="submit" id="send-chat-button" disabled
+                    class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-r-lg font-semibold transition duration-150 disabled:bg-gray-500">
+                Send
+            </button>
+        </form>
+    </div>
 
-    // --- GAME STATE AND CONSTANTS ---
-    const MOVEMENT_SPEED = 0.5; // World units (0-100) per frame
-    const PLAYER_RADIUS = 1.5;
-    const PROXIMITY_RADIUS = 15; 
-    const BUMP_MAGNITUDE = 5; 
-
-    const STICK_TIMEOUT_MS = 5000; // 5 seconds of chaos
-    const STICK_COOLDOWN_MS = 15000; // 15 seconds cooldown
-    const STICK_RADIUS = 1.0;
-    const STICK_PICKUP_DISTANCE = PLAYER_RADIUS + STICK_RADIUS + 1; 
-    
-    let movementIntervalId = null; 
-    let stickTimer = null; 
-
-    let localPlayerState = { 
-        x: 50, 
-        y: 50, 
-        color: '#4f46e5', 
-        username: 'Loading...', 
-        mapId: 'main', 
-        vx: 0, 
-        vy: 0,
-        hasStick: false 
-    }; 
-
-    const otherPlayers = {};
-    let globalStickState = {
-        x: 0,
-        y: 0,
-        isHeld: false,
-        holderId: null,
-        cooldownUntil: 0 
-    };
-    let stickRotation = 0; 
-
-    // --- MAP DEFINITIONS ---
-    const MAPS = {
-        main: {
-            scenery: [
-                { type: 'tree', id: 'tree1', x: 20, y: 75, width: 3, height: 6, trunk: '#8B4513', canopy: '#10B981' }, 
-                { type: 'tree', id: 'tree2', x: 80, y: 30, width: 3, height: 6, trunk: '#A0522D', canopy: '#059669' }, 
-                { type: 'tree', id: 'tree3', x: 50, y: 20, width: 3, height: 6, trunk: '#502913', canopy: '#34D399' },
-                { type: 'house', id: 'house1_entry', x: 15, y: 25, size: 7, body: '#FCD34D', roof: '#EF4444' }, 
-                { type: 'house', id: 'house2_entry', x: 85, y: 75, size: 7, body: '#93C5FD', roof: '#1E40AF' }  
-            ],
-            backgroundColor: '#27303f'
-        },
-        house1: {
-            scenery: [
-                { type: 'wall', x: 50, y: 50, width: 80, height: 80, color: '#6B7280' }, 
-                { type: 'wall', x: 20, y: 20, width: 5, height: 10, color: '#9333ea' }, 
-                { type: 'wall', x: 80, y: 80, width: 5, height: 5, color: '#f97316' }, 
-                { type: 'exit', id: 'main_exit', targetMap: 'main', targetX: 10, targetY: 50, x: 50, y: 90, radius: 4, label: 'Exit' } 
-            ],
-            backgroundColor: '#4B5563' 
-        }
-    };
-    // --- END MAP DEFINITIONS ---
-
-
-    // --- START: STANDALONE CONFIGURATION BLOCK (CRITICAL FOR GITHUB) ---
-    /* To deploy this file to GitHub or run it locally, 
-        you MUST replace the placeholder values below with your actual keys 
-        from your Firebase project to enable multiplayer.
-        The AI chat feature has been removed.
-    */
-    const STANDALONE_CONFIGS = {
-        // FIREBASE CONFIG: Get this from your Firebase project settings
-        firebase: {
-            apiKey: "YOUR_FIREBASE_API_KEY_HERE", 
-            authDomain: "YOUR-PROJECT-ID.firebaseapp.com",
-            projectId: "YOUR-PROJECT-ID", 
-            storageBucket: "YOUR-PROJECT-ID.appspot.com",
-            messagingSenderId: "1234567890",
-            appId: "1:234567890:web:abcdef"
-        },
-    };
-    // --- END: STANDALONE CONFIGURATION BLOCK ---
-    
-    // --- FIRESTORE PATHS ---
-    function getChatCollectionPath() {
-        return `artifacts/${appId}/public/data/chat`;
-    }
-    
-    function getPlayerStatesCollectionPath() {
-        return `artifacts/${appId}/public/data/playerStates`;
-    }
-
-    function getStickStatePath() {
-        return firebase.doc(db, `artifacts/${appId}/public/data/stickState`, 'global_stick');
-    }
-    // --- END FIRESTORE PATHS ---
-    
-    // --- FIRESTORE INITIALIZATION & AUTHENTICATION ---
-
-    async function initApp() {
-        try {
-            // 1. Determine Firebase Configuration
-            let config;
-            let source = "Canvas Environment";
-            
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                // Use environment variables (works inside this platform)
-                config = JSON.parse(__firebase_config);
-
-            } else if (STANDALONE_CONFIGS.firebase.projectId && STANDALONE_CONFIGS.firebase.apiKey !== "YOUR_FIREBASE_API_KEY_HERE") {
-                // Fallback to the user-provided config (works on GitHub)
-                config = STANDALONE_CONFIGS.firebase;
-                source = "Standalone Config";
-            } else {
-                log('Error: Firebase config missing/placeholder. Please edit STANDALONE_CONFIGS for multiplayer.', 'error');
-                const mockConfig = { apiKey: "mock-key", authDomain: "mock.firebaseapp.com", projectId: "mock-project" };
-                const mockApp = firebase.initializeApp(mockConfig);
-                auth = firebase.getAuth(mockApp);
-                await firebase.signInAnonymously(auth);
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                document.getElementById('player-id').textContent = userId + " (MOCK)";
-                log('[System] Running in MOCK mode (No multiplayer persistence).', 'error');
-                setupEventListeners();
-                gameLoop();
-                return; 
-            }
-
-            // 2. Resolve App ID
-            appId = typeof __app_id !== 'undefined' ? __app_id : config.projectId;
-            log(`[System] Initializing from ${source} for App ID: ${appId}...`);
-
-            const app = firebase.initializeApp(config);
-            db = firebase.getFirestore(app);
-            auth = firebase.getAuth(app);
-            firebase.setLogLevel('Debug');
-
-            // 3. Handle Authentication
-            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-            await new Promise(resolve => {
-                firebase.onAuthStateChanged(auth, async (user) => {
-                    if (!user) {
-                        if (initialAuthToken) {
-                            await firebase.signInWithCustomToken(auth, initialAuthToken);
-                        } else {
-                            await firebase.signInAnonymously(auth);
-                        }
-                    }
-                    userId = auth.currentUser?.uid || crypto.randomUUID();
-                    document.getElementById('player-id').textContent = userId;
-                    
-                    localPlayerState.username = `Dot_${userId.substring(0, 4)}`;
-                    document.getElementById('username-input').value = localPlayerState.username;
-
-                    resolve();
-                });
-            });
-
-            setupEventListeners();
-            initializeStickState(); 
-            startStateListener(userId);
-            startChatListener();
-            startStickStateListener();
-            gameLoop(); 
-
-        } catch (error) {
-            log(`[System] Fatal Initialization Error: ${error.message}`, 'error');
-            console.error(error);
-        }
-    }
-    
-    // --- UTILITY, STICK, GAME LOGIC ---
-    
-    function log(message, type = 'system') {
-        const logElement = document.getElementById('log');
-        let color = 'text-gray-400';
-        if (type === 'chat') color = 'text-green-300';
-        if (type === 'error') color = 'text-red-400';
-        if (type === 'stick') color = 'text-orange-400 font-bold';
+    <!-- Firebase Imports via CDN -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        // --- 1. FIREBASE CONFIGURATION (CRUCIAL!) ---
+        // These keys were provided by the user and are now installed.
+        const EXTERNAL_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyAkDCeZk9K90FQTKpQYKNPgaGeIPJnn3dM", 
+            authDomain: "dotgame-ece62.firebaseapp.com",
+            projectId: "dotgame-ece62",
+            storageBucket: "dotgame-ece62.firebasestorage.app",
+            messagingSenderId: "1040721380661",
+            appId: "1:1040721380661:web:e60a7458573b1c46f1787c"
+        };
+        // ---------------------------------------------
         
-        logElement.innerHTML = `<p class="${color}">[${timestamp}] ${message}</p>` + logElement.innerHTML;
-        
-        while (logElement.children.length > 50) {
-            logElement.removeChild(logElement.lastChild);
-        }
-    }
-    
-    function findRandomTreeSpawn() {
-        const trees = MAPS.main.scenery.filter(item => item.type === 'tree');
-        if (trees.length === 0) return { x: 50, y: 50 };
-        
-        const tree = trees[Math.floor(Math.random() * trees.length)];
-        
-        const offsetX = (Math.random() > 0.5 ? 1 : -1) * (tree.width * 2);
-        const offsetY = (Math.random() > 0.5 ? 1 : -1) * (tree.height * 2);
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : EXTERNAL_FIREBASE_CONFIG;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        return { x: tree.x + offsetX, y: tree.y + offsetY };
-    }
-    
-    async function initializeStickState() {
-        if (!db) return;
-        const stickRef = getStickStatePath();
-        const docSnapshot = await firebase.getDoc(stickRef);
+        // Firebase Service Instances
+        let app, db, auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // Game Constants
+        const DOT_RADIUS = 15;
+        const PLAYER_COLOR = '#4F46E5'; // Indigo for self
+        const OTHER_COLOR = '#10B981'; // Emerald for others
+        const COLLECTION_PATH_PLAYERS = `/artifacts/${appId}/public/data/players`;
+        const COLLECTION_PATH_CHAT = `/artifacts/${appId}/public/data/chat`;
         
-        if (!docSnapshot.exists()) {
-            const spawn = findRandomTreeSpawn();
-            await firebase.setDoc(stickRef, {
-                x: spawn.x,
-                y: spawn.y,
-                isHeld: false,
-                holderId: null,
-                cooldownUntil: Date.now() 
-            }).catch(e => log(`[System] Error initializing stick: ${e.message}`, 'error'));
-            log('[System] Initialized Spinning Stick.', 'stick');
-        }
-    }
-    
-    function startStickStateListener() {
-        if (!db) return;
-        const stickRef = getStickStatePath();
+        let canvas, ctx;
+        let canvasWidth = 0;
+        let canvasHeight = 0;
+        let myX = 0;
+        let myY = 0;
+        let lastUpdateTime = 0;
+        const FRAME_INTERVAL = 1000 / 60; // 60 FPS
         
-        firebase.onSnapshot(stickRef, (doc) => {
-            if (doc.exists()) {
-                const data = doc.data();
-                globalStickState = { ...data, cooldownUntil: data.cooldownUntil || 0 };
+        let players = {}; // Stores { userId: {x, y, color} }
+
+        // --- 2. FIREBASE INITIALIZATION & AUTHENTICATION ---
+
+        const initializeFirebase = async () => {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in using the provided token or anonymously
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
                 
-                if (globalStickState.holderId === userId && !localPlayerState.hasStick) {
-                    handleStickPickup(true); 
-                }
-            }
-        }, (error) => {
-            log(`[System] Stick Listener Error: ${error.message}`, 'error');
-        });
-    }
-
-    function handleStickPickup(remote = false) {
-        if (localPlayerState.hasStick || !db) return;
-
-        localPlayerState.hasStick = true;
-        log('[Stick] **CHAOS MODE ACTIVATED**! 5 seconds of BUMPING!', 'stick');
-
-        document.getElementById('stick-status').textContent = '⚡️ Chaos Mode (5s)';
-
-        if (!remote) {
-            const stickRef = getStickStatePath();
-            firebase.setDoc(stickRef, {
-                isHeld: true,
-                holderId: userId,
-            }, { merge: true }).catch(e => log(`[System] Error claiming stick: ${e.message}`, 'error'));
-        }
-
-        clearTimeout(stickTimer);
-        stickTimer = setTimeout(handleStickDrop, STICK_TIMEOUT_MS);
-    }
-
-    async function handleStickDrop() {
-        if (!localPlayerState.hasStick || !db) return;
-
-        localPlayerState.hasStick = false;
-        clearTimeout(stickTimer);
-        stickTimer = null;
-
-        document.getElementById('stick-status').textContent = 'Cooldown (15s)';
-        log('[Stick] Stick broke! **15-second cooldown** begins.', 'stick');
-        
-        const newSpawn = findRandomTreeSpawn();
-        const cooldownEndsAt = Date.now() + STICK_COOLDOWN_MS;
-
-        const stickRef = getStickStatePath();
-        try {
-            await firebase.setDoc(stickRef, {
-                isHeld: false,
-                holderId: null,
-                x: newSpawn.x,
-                y: newSpawn.y,
-                cooldownUntil: cooldownEndsAt
-            }, { merge: true });
-
-            let countdown = STICK_COOLDOWN_MS / 1000;
-            const cooldownInterval = setInterval(() => {
-                countdown--;
-                if (countdown <= 0) {
-                    clearInterval(cooldownInterval);
-                    document.getElementById('stick-status').textContent = 'STICK READY!';
-                } else {
-                    document.getElementById('stick-status').textContent = `Cooldown (${countdown}s)`;
-                }
-            }, 1000);
-
-        } catch (e) {
-            log(`[System] Error dropping stick: ${e.message}`, 'error');
-        }
-    }
-
-    async function sendStickBump(targetId, dx, dy) {
-        if (!db) return;
-        const allPlayersRef = firebase.collection(db, getPlayerStatesCollectionPath());
-        const targetRef = firebase.doc(allPlayersRef, targetId);
-
-        try {
-            await firebase.setDoc(targetRef, { 
-                x: (otherPlayers[targetId]?.x || 50) + dx, 
-                y: (otherPlayers[targetId]?.y || 50) + dy,
-                lastActive: firebase.serverTimestamp()
-            }, { merge: true });
-            log(`[Stick] You BUMPED ${otherPlayers[targetId]?.username || targetId.substring(0, 4)}!`, 'stick');
-
-        } catch(e) {
-            log(`[System] Error bumping player: ${e.message}`, 'error');
-            console.error(e);
-        }
-    }
-    
-    function startStateListener(localUid) {
-        if (!db) return;
-        const allPlayersRef = firebase.collection(db, getPlayerStatesCollectionPath());
-        
-        firebase.onSnapshot(allPlayersRef, (snapshot) => {
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                const uid = doc.id;
-
-                if (uid === localUid) {
-                    localPlayerState = { 
-                        ...localPlayerState, 
-                        ...data,
-                        username: data.username || localPlayerState.username,
-                        color: data.color || localPlayerState.color,
-                        mapId: data.mapId || 'main' 
-                    };
-                    document.getElementById('color-picker').value = localPlayerState.color;
-                    document.getElementById('username-input').value = localPlayerState.username;
-
-                    if (globalStickState.holderId !== localUid && localPlayerState.hasStick) {
-                        localPlayerState.hasStick = false;
-                        clearTimeout(stickTimer);
-                        stickTimer = null;
-                        document.getElementById('stick-status').textContent = '';
-                        log('[Stick] Stick has been dropped or taken by another player.', 'system');
-                    }
-
-                } else {
-                    otherPlayers[uid] = data;
-                }
-            });
-            drawGame();
-        }, (error) => {
-            log(`[System] State Listener Error: ${error.message}`, 'error');
-        });
-
-        const myStateRef = firebase.doc(allPlayersRef, localUid);
-        firebase.getDoc(myStateRef).then(docSnapshot => {
-            if (!docSnapshot.exists() || !docSnapshot.data().username) {
-                firebase.setDoc(myStateRef, { 
-                    x: localPlayerState.x, 
-                    y: localPlayerState.y, 
-                    color: localPlayerState.color,
-                    username: localPlayerState.username,
-                    mapId: localPlayerState.mapId, 
-                    lastActive: firebase.serverTimestamp() 
-                }, { merge: true }).catch(e => {
-                    log(`[System] Error setting initial state: ${e.message}`, 'error');
-                });
-            }
-        });
-    }
-
-    function startChatListener() {
-        if (!db) return;
-        const chatRef = firebase.collection(db, getChatCollectionPath());
-        const q = firebase.query(chatRef); 
-
-        firebase.onSnapshot(q, (snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === "added") {
-                    const data = change.doc.data();
-                    const senderId = data.userId;
-                    
-                    const senderState = otherPlayers[senderId] || (senderId === userId ? localPlayerState : null);
-                    const senderName = senderState?.username || senderId.substring(0, 8);
-                    const color = senderState?.color || '#9ca3af';
-
-                    log(`<span style="color:${color};">[${senderName}]:</span> ${data.message}`, 'chat');
-                }
-            });
-        }, (error) => {
-            log(`[System] Chat Listener Error: ${error.message}`, 'error');
-        });
-    }
-    
-    // --- DRAWING FUNCTIONS ---
-
-    function worldToCanvas(value, canvasSize) { return value * canvasSize / 100; }
-    function distance(x1, y1, x2, y2) { return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)); }
-    
-    function drawTree(ctx, item, canvasWidth, canvasHeight) {
-        const cx = worldToCanvas(item.x, canvasWidth);
-        const cy = worldToCanvas(item.y, canvasHeight);
-        const w = worldToCanvas(item.width, canvasWidth);
-        const h = worldToCanvas(item.height, canvasHeight);
-        const leafR = w * 1.5;
-
-        ctx.fillStyle = item.trunk;
-        ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
-
-        ctx.beginPath();
-        ctx.arc(cx, cy - h / 2, leafR, 0, Math.PI * 2);
-        ctx.fillStyle = item.canopy;
-        ctx.fill();
-        ctx.closePath();
-    }
-
-    function drawHouse(ctx, item, canvasWidth, canvasHeight) {
-        const cx = worldToCanvas(item.x, canvasWidth);
-        const cy = worldToCanvas(item.y, canvasHeight);
-        const s = worldToCanvas(item.size, canvasWidth);
-        const halfS = s / 2;
-
-        ctx.fillStyle = item.body;
-        ctx.fillRect(cx - halfS, cy - halfS, s, s);
-
-        ctx.beginPath();
-        ctx.moveTo(cx - halfS, cy - halfS); 
-        ctx.lineTo(cx + halfS, cy - halfS); 
-        ctx.lineTo(cx, cy - halfS - s * 0.4); 
-        ctx.closePath();
-        ctx.fillStyle = item.roof;
-        ctx.fill();
-    }
-    
-    function drawWall(ctx, item, canvasWidth, canvasHeight) {
-        const cx = worldToCanvas(item.x, canvasWidth);
-        const cy = worldToCanvas(item.y, canvasHeight);
-        const w = worldToCanvas(item.width, canvasWidth);
-        const h = worldToCanvas(item.height, canvasHeight);
-
-        ctx.fillStyle = item.color;
-        ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
-    }
-    
-    function drawExit(ctx, item, canvasWidth, canvasHeight) {
-        const cx = worldToCanvas(item.x, canvasWidth);
-        const cy = worldToCanvas(item.y, canvasHeight);
-        const r = worldToCanvas(item.radius, canvasWidth);
-
-        ctx.fillStyle = '#10B981'; 
-        ctx.beginPath();
-        ctx.rect(cx - r, cy - r, r * 2, r * 2);
-        ctx.fill();
-
-        ctx.fillStyle = 'white';
-        ctx.font = `${r * 0.7}px Inter`;
-        ctx.textAlign = 'center';
-        ctx.fillText(item.label, cx, cy + r * 0.2);
-        ctx.fillText(`-> ${item.targetMap}`, cx, cy + r * 1.2);
-    }
-
-    function drawStick(ctx, item, canvasWidth, canvasHeight) {
-        const cx = worldToCanvas(item.x, canvasWidth);
-        const cy = worldToCanvas(item.y, canvasHeight);
-        const r = worldToCanvas(STICK_RADIUS, canvasWidth);
-        const length = r * 3;
-
-        if (globalStickState.isHeld || Date.now() < globalStickState.cooldownUntil) {
-            return;
-        }
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        
-        stickRotation += 4; 
-        ctx.rotate(stickRotation * Math.PI / 180);
-
-        ctx.fillStyle = '#A0522D'; 
-        ctx.fillRect(-r / 2, -length / 2, r, length);
-
-        ctx.restore();
-    }
-    
-    function drawGame() {
-        const canvas = document.getElementById('game-canvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        
-        const container = canvas.parentElement;
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientWidth / 2;
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        
-        const currentMap = MAPS[localPlayerState.mapId] || MAPS.main;
-
-        canvas.style.backgroundColor = currentMap.backgroundColor;
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        
-        currentMap.scenery.forEach(item => {
-            if (item.type === 'tree') {
-                drawTree(ctx, item, canvasWidth, canvasHeight);
-            } else if (item.type === 'house') {
-                drawHouse(ctx, item, canvasWidth, canvasHeight);
-            } else if (item.type === 'wall') {
-                drawWall(ctx, item, canvasWidth, canvasHeight);
-            } else if (item.type === 'exit') {
-                drawExit(ctx, item, canvasWidth, canvasHeight);
-            }
-        });
-
-        if (localPlayerState.mapId === 'main') {
-            drawStick(ctx, globalStickState, canvasWidth, canvasHeight);
-        }
-        
-        for (const uid in otherPlayers) {
-            const player = otherPlayers[uid];
-            if (player.mapId !== localPlayerState.mapId || !player.x || !player.y) continue; 
-            
-            const px = worldToCanvas(player.x, canvasWidth);
-            const py = worldToCanvas(player.y, canvasHeight);
-            const pr = worldToCanvas(PLAYER_RADIUS, canvasWidth);
-            
-            ctx.beginPath();
-            ctx.arc(px, py, pr, 0, Math.PI * 2);
-            ctx.fillStyle = player.color || '#9ca3af'; 
-            ctx.fill();
-            ctx.closePath();
-
-            if (globalStickState.holderId === uid) {
-                ctx.save();
-                ctx.translate(px, py);
-                ctx.strokeStyle = '#f97316'; 
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(0, 0, pr + 3, stickRotation * Math.PI / 180, (stickRotation + 180) * Math.PI / 180);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.arc(0, 0, pr + 3, (stickRotation + 90) * Math.PI / 180, (stickRotation + 270) * Math.PI / 180);
-                ctx.stroke();
-                ctx.restore();
-            }
-
-            const username = player.username || uid.substring(0, 4);
-            ctx.fillStyle = 'white';
-            ctx.font = `${pr * 0.8}px Inter`;
-            ctx.textAlign = 'center';
-            ctx.fillText(username, px, py - pr - 2);
-        }
-        
-        const localX = worldToCanvas(localPlayerState.x, canvasWidth);
-        const localY = worldToCanvas(localPlayerState.y, canvasHeight);
-        const localR = worldToCanvas(PLAYER_RADIUS, canvasWidth);
-
-        ctx.beginPath();
-        ctx.arc(localX, localY, localR, 0, Math.PI * 2);
-        ctx.fillStyle = localPlayerState.color || '#4f46e5'; 
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.closePath();
-
-        if (localPlayerState.hasStick) {
-            ctx.save();
-            ctx.translate(localX, localY);
-            ctx.strokeStyle = '#f97316'; 
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(0, 0, localR + 3, stickRotation * Math.PI / 180, (stickRotation + 180) * Math.PI / 180);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(0, 0, localR + 3, (stickRotation + 90) * Math.PI / 180, (stickRotation + 270) * Math.PI / 180);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        const localUsername = localPlayerState.username;
-        ctx.fillStyle = 'white';
-        ctx.font = `${localR * 0.8}px Inter`;
-        ctx.textAlign = 'center';
-        ctx.fillText(localUsername, localX, localY - localR - 2);
-    }
-    
-    // --- MOVEMENT & INTERACTION LOGIC ---
-
-    async function teleportPlayer(newMapId, newX, newY) {
-        if (!db || !userId) return;
-
-        if (localPlayerState.hasStick) {
-            handleStickDrop();
-        }
-
-        localPlayerState.mapId = newMapId;
-        localPlayerState.x = newX;
-        localPlayerState.y = newY;
-        
-        localPlayerState.vx = 0;
-        localPlayerState.vy = 0;
-        stopMovementUpdate(); 
-
-        const allPlayersRef = firebase.collection(db, getPlayerStatesCollectionPath());
-        const myStateRef = firebase.doc(allPlayersRef, userId);
-
-        try {
-            await firebase.setDoc(myStateRef, { 
-                mapId: newMapId,
-                x: newX, 
-                y: newY, 
-                lastActive: firebase.serverTimestamp() 
-            }, { merge: true });
-        } catch (e) {
-            log(`[System] Error teleporting: ${e.message}`, 'error');
-            console.error(e);
-        }
-    }
-
-    function handleCanvasClick(event) {
-        const canvas = document.getElementById('game-canvas');
-        const rect = canvas.getBoundingClientRect();
-        
-        const worldClickX = (event.clientX - rect.left) * 100 / canvas.width;
-        const worldClickY = (event.clientY - rect.top) * 100 / canvas.height;
-
-        const currentMap = MAPS[localPlayerState.mapId];
-        
-        for (const item of currentMap.scenery) {
-            if (item.type !== 'house' && item.type !== 'exit') continue;
-
-            const itemCenterDist = distance(localPlayerState.x, localPlayerState.y, item.x, item.y);
-            const clickCenterDist = distance(worldClickX, worldClickY, item.x, item.y);
-            
-            if (itemCenterDist < PROXIMITY_RADIUS && clickCenterDist < PROXIMITY_RADIUS) {
-                if (item.type === 'house' && item.id === 'house1_entry' && localPlayerState.mapId === 'main') {
-                    teleportPlayer('house1', 50, 80); 
-                    log(`[System] Entering house. Welcome inside!`, 'system');
-                    return;
-                } else if (item.type === 'exit' && item.targetMap && localPlayerState.mapId === 'house1') {
-                    teleportPlayer(item.targetMap, item.targetX, item.targetY); 
-                    log(`[System] Exiting to ${item.targetMap}.`, 'system');
-                    return;
-                }
-            }
-        }
-    }
-    
-    function pauseMovement() {
-        localPlayerState.vx = 0;
-        localPlayerState.vy = 0;
-        stopMovementUpdate(); 
-    }
-
-    function handleQuickChatFocus(e) {
-        const chatInput = document.getElementById('chat-input');
-        
-        if (e.key === '/' && document.activeElement !== chatInput) {
-            e.preventDefault(); 
-            chatInput.focus();
-            chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
-            log('[System] Chat activated (/). Press Enter to send or Esc to close.', 'system');
-        }
-        
-        if (e.key === 'Escape' && document.activeElement === chatInput) {
-            e.preventDefault();
-            chatInput.value = ''; 
-            chatInput.blur(); 
-            log('[System] Chat closed (Esc). Movement re-enabled.', 'system');
-        }
-    }
-    
-    function updateLocalPosition() {
-        if (localPlayerState.mapId === 'main' && !localPlayerState.hasStick && !globalStickState.isHeld && Date.now() > globalStickState.cooldownUntil) {
-            const distToStick = distance(localPlayerState.x, localPlayerState.y, globalStickState.x, globalStickState.y);
-            if (distToStick < STICK_PICKUP_DISTANCE) {
-                handleStickPickup();
-            }
-        }
-        
-        if (localPlayerState.vx !== 0 || localPlayerState.vy !== 0) {
-            
-            const nextX = localPlayerState.x + localPlayerState.vx;
-            const nextY = localPlayerState.y + localPlayerState.vy;
-
-            let collisionDetected = false;
-
-            for (const uid in otherPlayers) {
-                const player = otherPlayers[uid];
-                if (player.mapId === localPlayerState.mapId) {
-                    const dist = distance(nextX, nextY, player.x, player.y);
-                    
-                    if (dist < PLAYER_RADIUS * 2) { 
-                        collisionDetected = true;
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('user-id-display').textContent = userId;
+                        isAuthReady = true;
                         
-                        if (localPlayerState.hasStick) {
-                            const dx = player.x - localPlayerState.x;
-                            const dy = player.y - localPlayerState.y;
-                            const totalV = Math.sqrt(dx * dx + dy * dy);
-                            
-                            if (totalV > 0) {
-                                const pushX = (dx / totalV) * BUMP_MAGNITUDE;
-                                const pushY = (dy / totalV) * BUMP_MAGNITUDE;
-                                
-                                sendStickBump(uid, pushX, pushY);
-                            }
-                        }
-                        break; 
+                        // Set initial position to center
+                        myX = canvas.width / 2;
+                        myY = canvas.height / 2;
+
+                        // Start listeners and game loop once authenticated
+                        listenForPlayers();
+                        listenForChat();
+                        document.getElementById('send-chat-button').disabled = false;
+                        document.getElementById('game-status').classList.remove('bg-yellow-600', 'animate-pulse');
+                        document.getElementById('game-status').classList.add('bg-green-600');
+                        document.getElementById('status-message').textContent = "Connected!";
+                    } else {
+                        console.error("Authentication failed.");
+                        isAuthReady = false;
                     }
+                });
+
+            } catch (e) {
+                console.error("Firebase initialization error:", e);
+                document.getElementById('status-message').textContent = "Error: See Console.";
+                document.getElementById('game-status').classList.add('bg-red-600');
+            }
+        };
+
+        // --- 3. FIRESTORE DATA FUNCTIONS ---
+
+        const updateMyPosition = async () => {
+            if (!isAuthReady) return;
+
+            // Limit x/y to be within bounds
+            const x = Math.max(DOT_RADIUS, Math.min(myX, canvasWidth - DOT_RADIUS));
+            const y = Math.max(DOT_RADIUS, Math.min(myY, canvasHeight - DOT_RADIUS));
+
+            const playerDocRef = doc(db, COLLECTION_PATH_PLAYERS, userId);
+            
+            try {
+                await setDoc(playerDocRef, {
+                    x: x,
+                    y: y,
+                    timestamp: serverTimestamp() // Helps clean up old players later
+                });
+            } catch (e) {
+                console.error("Error updating position:", e);
+            }
+        };
+
+        const listenForPlayers = () => {
+            if (!isAuthReady) return;
+            const q = query(collection(db, COLLECTION_PATH_PLAYERS));
+            
+            onSnapshot(q, (snapshot) => {
+                const newPlayers = {};
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (doc.id !== userId) {
+                        newPlayers[doc.id] = { x: data.x, y: data.y, color: OTHER_COLOR, id: doc.id.substring(0, 8) };
+                    }
+                });
+                players = newPlayers;
+                document.getElementById('player-count').textContent = snapshot.size;
+            }, (error) => {
+                console.error("Error listening to players:", error);
+            });
+        };
+
+        const listenForChat = () => {
+            if (!isAuthReady) return;
+            const chatMessagesDiv = document.getElementById('chat-messages');
+            const q = query(collection(db, COLLECTION_PATH_CHAT));
+
+            onSnapshot(q, (snapshot) => {
+                // Clear and rebuild chat for simplicity, or implement efficient diffing
+                chatMessagesDiv.innerHTML = '';
+                
+                const chatHistory = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    chatHistory.push(data);
+                });
+
+                // Simple in-memory sorting by timestamp (Firestore order is preferred, but avoiding orderBy for simplicity)
+                chatHistory.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+
+                chatHistory.slice(-15).forEach(message => { // Show last 15 messages
+                    const messageElement = document.createElement('div');
+                    const isMine = message.userId === userId;
+                    
+                    messageElement.className = `p-2 rounded-lg break-words max-w-[90%] ${isMine ? 'bg-blue-800 ml-auto text-white' : 'bg-gray-600 mr-auto text-gray-100'}`;
+                    messageElement.innerHTML = `<span class="font-bold text-xs ${isMine ? 'text-blue-200' : 'text-green-300'}">${isMine ? 'You' : message.userId.substring(0, 8)}:</span> ${message.text}`;
+                    
+                    chatMessagesDiv.appendChild(messageElement);
+                });
+                chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight; // Scroll to bottom
+            }, (error) => {
+                console.error("Error listening to chat:", error);
+            });
+        };
+
+        // --- 4. GAME & DRAWING LOOP ---
+
+        const drawGame = () => {
+            // Resize canvas to fill container dimensions
+            canvasWidth = canvas.clientWidth;
+            canvasHeight = canvas.clientHeight;
+            if (canvas.width !== canvasWidth) canvas.width = canvasWidth;
+            if (canvas.height !== canvasHeight) canvas.height = canvasHeight;
+            
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            ctx.fillStyle = '#161b22';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight); // Dark background
+
+            // Draw other player dots
+            for (const id in players) {
+                const player = players[id];
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, DOT_RADIUS, 0, Math.PI * 2, false);
+                ctx.fillStyle = player.color;
+                ctx.shadowColor = player.color;
+                ctx.shadowBlur = 15;
+                ctx.fill();
+                ctx.closePath();
+
+                // Draw player ID text
+                ctx.fillStyle = '#C9D1D9'; // Light gray text
+                ctx.font = '12px Inter';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 0;
+                ctx.fillText(player.id, player.x, player.y - DOT_RADIUS - 5);
+            }
+
+            // Draw the local player dot (on top)
+            if (isAuthReady) {
+                ctx.beginPath();
+                ctx.arc(myX, myY, DOT_RADIUS, 0, Math.PI * 2, false);
+                ctx.fillStyle = PLAYER_COLOR;
+                ctx.shadowColor = PLAYER_COLOR;
+                ctx.shadowBlur = 25;
+                ctx.fill();
+                ctx.closePath();
+
+                // Draw YOUR text
+                ctx.fillStyle = '#E5E7EB';
+                ctx.font = '14px Inter';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 0;
+                ctx.fillText('YOU', myX, myY - DOT_RADIUS - 8);
+            }
+        };
+
+        const gameLoop = (timestamp) => {
+            const elapsed = timestamp - lastUpdateTime;
+
+            if (elapsed > FRAME_INTERVAL) {
+                drawGame();
+                lastUpdateTime = timestamp - (elapsed % FRAME_INTERVAL);
+            }
+
+            requestAnimationFrame(gameLoop);
+        };
+        
+        // --- 5. EVENT HANDLERS ---
+
+        const handlePointerMove = (event) => {
+            if (!isAuthReady) return;
+
+            const rect = canvas.getBoundingClientRect();
+            // Handle both mouse and touch events
+            const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
+            const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+
+            myX = clientX - rect.left;
+            myY = clientY - rect.top;
+
+            // Immediately send the new position to the database
+            updateMyPosition();
+        };
+
+        const handleChatSubmit = async (event) => {
+            event.preventDefault();
+            if (!isAuthReady) return;
+
+            const chatInput = document.getElementById('chat-input');
+            const message = chatInput.value.trim();
+
+            if (message) {
+                try {
+                    await addDoc(collection(db, COLLECTION_PATH_CHAT), {
+                        userId: userId,
+                        text: message,
+                        timestamp: serverTimestamp()
+                    });
+                    chatInput.value = ''; // Clear input on success
+                } catch (e) {
+                    console.error("Error sending message:", e);
                 }
             }
+        };
+        
+        // --- 6. INITIALIZATION ---
+
+        window.onload = () => {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
             
-            if (!collisionDetected) {
-                localPlayerState.x = nextX;
-                localPlayerState.y = nextY;
-            }
+            // Set initial canvas size before Firebase init
+            canvasWidth = canvas.clientWidth;
+            canvasHeight = canvas.clientHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
 
-            localPlayerState.x = Math.max(PLAYER_RADIUS, Math.min(100 - PLAYER_RADIUS, localPlayerState.x));
-            localPlayerState.y = Math.max(PLAYER_RADIUS, Math.min(100 - PLAYER_RADIUS, localPlayerState.y));
-        }
-    }
+            // Set up input listeners
+            canvas.addEventListener('mousemove', handlePointerMove);
+            canvas.addEventListener('touchmove', handlePointerMove);
+            document.getElementById('chat-form').addEventListener('submit', handleChatSubmit);
+            
+            // Start Firebase initialization and authentication
+            initializeFirebase();
 
-
-    function gameLoop() {
-        updateLocalPosition(); 
-        drawGame();
-        requestAnimationFrame(gameLoop);
-    }
-    
-    async function sendMovementUpdate() {
-        if ((localPlayerState.vx === 0 && localPlayerState.vy === 0 && movementIntervalId) || !db || !userId) {
-             if (!movementIntervalId) return; 
-        }
-
-        const allPlayersRef = firebase.collection(db, getPlayerStatesCollectionPath());
-        const myStateRef = firebase.doc(allPlayersRef, userId);
-
-        try {
-            await firebase.setDoc(myStateRef, { 
-                mapId: localPlayerState.mapId,
-                x: localPlayerState.x, 
-                y: localPlayerState.y, 
-                lastActive: firebase.serverTimestamp() 
-            }, { merge: true });
-        } catch (e) {
-            log(`[System] Error updating position: ${e.message}`, 'error');
-            console.error(e);
-        }
-    }
-
-    function startMovementUpdate() {
-        if (!movementIntervalId) {
-            movementIntervalId = setInterval(sendMovementUpdate, 50);
-        }
-    }
-
-    function stopMovementUpdate() {
-        if (movementIntervalId) {
-            clearInterval(movementIntervalId);
-            movementIntervalId = null;
-            sendMovementUpdate(); 
-        }
-    }
-
-    function handleKeyDown(e) {
-        if (document.activeElement.tagName === 'INPUT') return; 
-
-        let changed = false;
-        
-        switch (e.key.toLowerCase()) {
-            case 'w':
-            case 'arrowup':
-                localPlayerState.vy = -MOVEMENT_SPEED;
-                changed = true;
-                break;
-            case 's':
-            case 'arrowdown':
-                localPlayerState.vy = MOVEMENT_SPEED;
-                changed = true;
-                break;
-            case 'a':
-            case 'arrowleft':
-                localPlayerState.vx = -MOVEMENT_SPEED;
-                changed = true;
-                break;
-            case 'd':
-            case 'arrowright':
-                localPlayerState.vx = MOVEMENT_SPEED;
-                changed = true;
-                break;
-        }
-        
-        if (changed) {
-            e.preventDefault(); 
-            startMovementUpdate();
-        }
-    }
-
-    function handleKeyUp(e) {
-        if (document.activeElement.tagName === 'INPUT') return; 
-
-        let changed = false;
-        switch (e.key.toLowerCase()) {
-            case 'w':
-            case 'arrowup':
-            case 's':
-            case 'arrowdown':
-                localPlayerState.vy = 0;
-                changed = true;
-                break;
-            case 'a':
-            case 'arrowleft':
-            case 'd':
-            case 'arrowright':
-                localPlayerState.vx = 0;
-                changed = true;
-                break;
-        }
-        
-        if (changed && localPlayerState.vx === 0 && localPlayerState.vy === 0) {
-            stopMovementUpdate();
-        }
-    }
-    
-    // --- EVENT LISTENERS & SETUP ---
-    
-    async function updatePlayerProperty(key, value) {
-        if (!db || !userId) {
-            log(`[System] Error: DB not ready to save ${key}.`, 'error');
-            return;
-        }
-        const allPlayersRef = firebase.collection(db, getPlayerStatesCollectionPath());
-        const myStateRef = firebase.doc(allPlayersRef, userId);
-        
-        try {
-            await firebase.setDoc(myStateRef, { [key]: value }, { merge: true });
-            log(`[System] Player ${key} updated to ${value}.`, 'system');
-        } catch (e) {
-            log(`[System] Error updating ${key}: ${e.message}`, 'error');
-            console.error(e);
-        }
-    }
-
-    function setupEventListeners() {
-        const chatInput = document.getElementById('chat-input');
-        const colorPicker = document.getElementById('color-picker');
-        const usernameInput = document.getElementById('username-input');
-
-        document.getElementById('game-canvas').addEventListener('click', handleCanvasClick);
-        document.addEventListener('keydown', handleKeyDown);
-        document.addEventListener('keyup', handleKeyUp);
-        window.addEventListener('resize', drawGame);
-
-        chatInput.addEventListener('focus', pauseMovement);
-        chatInput.addEventListener('blur', stopMovementUpdate);
-        document.addEventListener('keydown', handleQuickChatFocus); 
-
-        document.getElementById('send-btn').addEventListener('click', sendChatMessage);
-        chatInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                sendChatMessage();
-                e.preventDefault();
-                chatInput.blur(); 
-            }
-        });
-        
-        usernameInput.addEventListener('change', (event) => {
-            const newUsername = event.target.value.trim().replace(/\s+/g, '_') || localPlayerState.username; 
-            localPlayerState.username = newUsername;
-            event.target.value = newUsername; 
-            updatePlayerProperty('username', newUsername);
-        });
-
-        colorPicker.addEventListener('change', (event) => {
-            const newColor = event.target.value;
-            localPlayerState.color = newColor; 
-            updatePlayerProperty('color', newColor);
-        });
-    }
-
-    async function sendChatMessage() {
-        const chatInput = document.getElementById('chat-input');
-        const message = chatInput.value.trim();
-        
-        if (!message || !db || !userId) return;
-        
-        const chatCollectionRef = firebase.collection(db, getChatCollectionPath());
-        
-        try {
-            await firebase.setDoc(firebase.doc(chatCollectionRef), {
-                userId: userId,
-                message: message,
-                timestamp: firebase.serverTimestamp()
-            });
-            chatInput.value = '';
-        } catch (e) {
-            log(`[System] Error sending chat: ${e.message}`, 'error');
-            console.error(e);
-        }
-    }
-</script>
+            // Start the non-stop drawing loop
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
 </body>
 </html>
