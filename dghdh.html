@@ -1,182 +1,605 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dot Drift: Local Demo Mode</title>
-    <!-- Load Tailwind CSS for modern, responsive styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dot Drift - Global Multiplayer Game</title>
+<!-- Load Tailwind CSS for styling the UI elements -->
+<script src="https://www.google.com/search?q=https://cdn.tailwindcss.com"></script>
+<!-- Load Firebase libraries -->
+<script type="module">
+import { initializeApp } from "https://www.google.com/search?q=https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.google.com/search?q=https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, onSnapshot, collection, query, addDoc, serverTimestamp, orderBy, limit } from "https://www.google.com/search?q=https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { setLogLevel } from "https://www.google.com/search?q=https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Global Firebase variables
+    window.db = null;
+    window.auth = null;
+    window.userId = null;
+    window.playersRef = null;
+    window.chatRef = null;
+    window.playerState = { x: 50, y: 50, color: 'blue', lastMove: Date.now() };
+
+    // Configuration variables (MUST be present in the environment)
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
     
-    <script type="module">
-        // --- LOCAL DEMO MODE ---
-        // This version runs 100% locally using localStorage (no internet database needed).
-        
-        let userId = 'local-player-1'; // Static ID for the local player
-        let canvas, ctx;
-        let lastUpdateTime = 0;
-        const FPS = 60;
-        const FRAME_INTERVAL = 1000 / FPS;
-        const DOT_RADIUS = 15;
-        const PLAYER_COLOR = '#4F46E5'; // Indigo for self
+    setLogLevel('Debug');
 
-        // Initial Position (Center)
-        let myX = 0;
-        let myY = 0;
-        let canvasWidth = 0;
-        let canvasHeight = 0;
+    async function initFirebase() {
+        if (!firebaseConfig) {
+            console.error("Firebase configuration is missing.");
+            return;
+        }
 
-        // --- Local Persistence Logic ---
-        
-        const loadInitialPosition = () => {
-            try {
-                const storedX = localStorage.getItem('dotDriftX');
-                const storedY = localStorage.getItem('dotDriftY');
-                if (storedX && storedY) {
-                    myX = parseFloat(storedX);
-                    myY = parseFloat(storedY);
+        const app = initializeApp(firebaseConfig);
+        window.db = getFirestore(app);
+        window.auth = getAuth(app);
+
+        const initialSignIn = new Promise((resolve) => {
+            onAuthStateChanged(window.auth, async (user) => {
+                if (user) {
+                    window.userId = user.uid;
+                    resolve(true);
+                } else {
+                    // Sign in anonymously if no custom token is provided
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(window.auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(window.auth);
+                        }
+                    } catch (error) {
+                        console.error("Firebase authentication failed:", error);
+                    }
                 }
-            } catch (e) {
-                console.warn("Could not load position from local storage:", e);
-            }
-        };
+            });
+        });
 
-        const updateMyPosition = () => {
-            // Limit x/y to be within bounds
-            const x = Math.max(DOT_RADIUS, Math.min(myX, canvasWidth - DOT_RADIUS));
-            const y = Math.max(DOT_RADIUS, Math.min(myY, canvasHeight - DOT_RADIUS));
+        await initialSignIn;
 
-            // Save position to local storage for persistence
-            localStorage.setItem('dotDriftX', x.toString());
-            localStorage.setItem('dotDriftY', y.toString());
-        };
+        if (window.userId) {
+            // Public data path for players
+            const playersCollectionPath = `/artifacts/${appId}/public/data/players`;
+            window.playersRef = collection(window.db, playersCollectionPath);
 
-        // --- Canvas Drawing Logic ---
-        
-        const drawGame = () => {
-            // Resize canvas to fill container dimensions
-            canvasWidth = canvas.clientWidth;
-            canvasHeight = canvas.clientHeight;
-            if (canvas.width !== canvasWidth) canvas.width = canvasWidth;
-            if (canvas.height !== canvasHeight) canvas.height = canvasHeight;
+            // Public data path for chat
+            const chatCollectionPath = `/artifacts/${appId}/public/data/chat`;
+            window.chatRef = collection(window.db, chatCollectionPath);
+
+            // Initialize player state in Firestore
+            const playerDocRef = doc(window.playersRef, window.userId);
+            await setDoc(playerDocRef, window.playerState, { merge: true });
+
+            // Start listeners for players and chat
+            startPlayerListener();
+            startChatListener();
             
-            // Clear the canvas
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            // Set the initial player ID on the UI
+            document.getElementById('player-id-display').textContent = `Your ID: ${window.userId}`;
 
-            // Draw the local player dot
+        } else {
+            // If sign-in still fails, fall back to a random ID and local state
+            window.userId = 'LOCAL_USER_' + crypto.randomUUID().substring(0, 8);
+            document.getElementById('player-id-display').textContent = `Local Mode - ID: ${window.userId}`;
+            console.warn("Falling back to local mode. Multiplayer functions disabled.");
+        }
+        
+        window.onload = function() {
+            // Start the game loop only after Firebase is ready
+            gameLoop();
+        }
+    }
+
+    function startPlayerListener() {
+        if (window.playersRef) {
+            onSnapshot(window.playersRef, (snapshot) => {
+                window.globalPlayers = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (doc.id !== window.userId) {
+                        window.globalPlayers[doc.id] = data;
+                    }
+                });
+            });
+        }
+    }
+
+    function startChatListener() {
+        if (window.chatRef) {
+            // Query to get the last 20 messages, ordered by timestamp
+            const q = query(window.chatRef, orderBy("timestamp", "desc"), limit(20));
+            onSnapshot(q, (snapshot) => {
+                // Reverse the array to show the newest messages at the bottom
+                window.chatMessages = snapshot.docs.map(doc => doc.data()).reverse();
+                drawChat();
+            });
+        }
+    }
+
+    window.initFirebase = initFirebase; // Expose to global scope
+</script>
+
+<script>
+    // --- GAME CORE VARIABLES ---
+    const CANVAS_WIDTH = 600;
+    const CANVAS_HEIGHT = 400;
+    const DOT_RADIUS = 7; // Smaller dot size
+    const MOVE_SPEED = 5;
+    const NPC_X = 50;
+    const NPC_Y = 50;
+    const NPC_COLOR = '#ffcc00'; // Yellow/Gold
+    const NPC_INTERACTION_RADIUS = 30; // Increased click area
+
+    let canvas, ctx;
+    let keys = {};
+    let globalPlayers = {};
+    let chatMessages = [];
+
+    // --- GEMINI API VARIABLES ---
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=`;
+    const ELDER_SYSTEM_PROMPT = "You are the Elder Dot, a wise, slightly mysterious, and encouraging NPC in a minimalist global multiplayer game. Keep your advice cryptic, concise, and related to movement, identity, or the world (houses, trees). Respond in a single short paragraph, under 30 words.";
+    let isChatModalOpen = false;
+    let isGeminiThinking = false;
+
+    // --- MAP DATA (Houses and Trees) ---
+    const MAP_ELEMENTS = [
+        // Houses (Rectangles)
+        { type: 'house', x: 100, y: 300, w: 20, h: 20, color: '#904E55' },
+        { type: 'house', x: 450, y: 150, w: 30, h: 30, color: '#904E55' },
+        { type: 'house', x: 250, y: 50, w: 15, h: 15, color: '#904E55' },
+        // Trees (Circles with Brown Trunk)
+        { type: 'tree', x: 550, y: 350, r: 10, color: '#4D7C0F' },
+        { type: 'tree', x: 50, y: 150, r: 8, color: '#4D7C0F' },
+        { type: 'tree', x: 350, y: 200, r: 12, color: '#4D7C0F' }
+    ];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        canvas = document.getElementById('game-canvas');
+        ctx = canvas.getContext('2d');
+        
+        // Set canvas size
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // Event listeners for movement
+        document.addEventListener('keydown', (e) => { keys[e.key] = true; });
+        document.addEventListener('keyup', (e) => { keys[e.key] = false; });
+        
+        // Event listener for chat submission
+        document.getElementById('global-chat-form').addEventListener('submit', handleGlobalChatSubmit);
+
+        // Event listener for Elder Dot interaction
+        canvas.addEventListener('click', handleInteractionClick);
+        
+        // Event listener for Elder Chat submission
+        document.getElementById('elder-chat-form').addEventListener('submit', handleElderChatSubmit);
+        document.getElementById('elder-chat-close').addEventListener('click', closeElderChatModal);
+        
+        // Initialize Firebase services
+        window.initFirebase();
+    });
+
+    // --- GAME LOGIC ---
+
+    function updatePlayerPosition() {
+        if (!window.userId || isChatModalOpen) return; // Prevent movement when modal is open
+
+        let moved = false;
+        let { x, y } = window.playerState;
+
+        if (keys['ArrowUp'] || keys['w']) y -= MOVE_SPEED;
+        if (keys['ArrowDown'] || keys['s']) y += MOVE_SPEED;
+        if (keys['ArrowLeft'] || keys['a']) x -= MOVE_SPEED;
+        if (keys['ArrowRight'] || keys['d']) x += MOVE_SPEED;
+
+        // Boundary checks
+        x = Math.max(DOT_RADIUS, Math.min(CANVAS_WIDTH - DOT_RADIUS, x));
+        y = Math.max(DOT_RADIUS, Math.min(CANVAS_HEIGHT - DOT_RADIUS, y));
+        
+        if (x !== window.playerState.x || y !== window.playerState.y) {
+            moved = true;
+            window.playerState.x = x;
+            window.playerState.y = y;
+        }
+
+        if (moved && window.playersRef) {
+            const playerDocRef = doc(window.playersRef, window.userId);
+            setDoc(playerDocRef, { ...window.playerState, lastMove: Date.now() }, { merge: true })
+                .catch(e => console.error("Error updating position:", e));
+        }
+    }
+
+    function drawGame() {
+        // Clear canvas and set background
+        ctx.fillStyle = '#0f172a'; // Dark blue background
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // 1. Draw Map Elements (Houses and Trees)
+        MAP_ELEMENTS.forEach(el => {
+            ctx.fillStyle = el.color;
+            if (el.type === 'house') {
+                // Draw square house
+                ctx.fillRect(el.x, el.y, el.w, el.h);
+                // Add a tiny chimney for flair
+                ctx.fillStyle = '#6D4A4B';
+                ctx.fillRect(el.x + el.w - 5, el.y - 5, 3, 5);
+            } else if (el.type === 'tree') {
+                // Draw trunk
+                ctx.fillStyle = '#654321';
+                ctx.fillRect(el.x - 3, el.y, 6, 15);
+                // Draw foliage
+                ctx.beginPath();
+                ctx.arc(el.x, el.y, el.r, 0, Math.PI * 2);
+                ctx.fillStyle = el.color;
+                ctx.fill();
+            }
+        });
+        
+        // 2. Draw Elder Dot NPC
+        ctx.beginPath();
+        ctx.arc(NPC_X, NPC_Y, DOT_RADIUS * 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = NPC_COLOR;
+        ctx.fill();
+        // Draw ring to highlight
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        // Label
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('Elder Dot', NPC_X, NPC_Y - DOT_RADIUS - 10);
+
+        // 3. Draw Other Players
+        for (const id in globalPlayers) {
+            const player = globalPlayers[id];
+            
+            // Draw dot
             ctx.beginPath();
-            ctx.arc(myX, myY, DOT_RADIUS, 0, Math.PI * 2, false);
-            ctx.fillStyle = PLAYER_COLOR;
-            ctx.shadowColor = PLAYER_COLOR;
-            ctx.shadowBlur = 20;
+            ctx.arc(player.x, player.y, DOT_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = player.color || 'gray';
             ctx.fill();
-            ctx.closePath();
 
-            // Draw player ID text
-            ctx.fillStyle = '#1F2937'; // Dark gray text
-            ctx.font = '12px Arial';
+            // Draw outline for glow
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = player.color || 'gray';
+            ctx.stroke();
+
+            // Draw Player ID
+            ctx.fillStyle = 'white';
+            ctx.font = '10px Inter';
             ctx.textAlign = 'center';
-            ctx.fillText('YOU (Local Demo)', myX, myY - DOT_RADIUS - 5);
-        };
+            ctx.fillText(id.substring(0, 8), player.x, player.y + DOT_RADIUS + 10);
+        }
 
-        // Game Loop
-        const gameLoop = (timestamp) => {
-            const elapsed = timestamp - lastUpdateTime;
+        // 4. Draw Current Player (Always on top)
+        if (window.userId) {
+            const { x, y, color } = window.playerState;
 
-            if (elapsed > FRAME_INTERVAL) {
-                drawGame();
-                lastUpdateTime = timestamp - (elapsed % FRAME_INTERVAL);
+            // Draw dot
+            ctx.beginPath();
+            ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // Draw glow (subtler)
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = color;
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Reset shadow
+
+            // Draw Label
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('YOU', x, y - DOT_RADIUS - 5);
+        }
+    }
+
+    function gameLoop() {
+        updatePlayerPosition();
+        drawGame();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- GLOBAL CHAT LOGIC ---
+
+    function handleGlobalChatSubmit(event) {
+        event.preventDefault();
+        const input = document.getElementById('global-chat-input');
+        const message = input.value.trim();
+
+        if (message && window.chatRef) {
+            addDoc(window.chatRef, {
+                userId: window.userId.substring(0, 8), // Show only short ID in chat
+                message: message,
+                timestamp: serverTimestamp()
+            }).catch(e => console.error("Error sending message:", e));
+            input.value = '';
+        }
+    }
+
+    function drawChat() {
+        const chatLog = document.getElementById('chat-log');
+        chatLog.innerHTML = ''; // Clear existing messages
+        
+        chatMessages.forEach(msg => {
+            if (msg.message && msg.userId) {
+                const isSelf = msg.userId === window.userId.substring(0, 8);
+                const msgDiv = document.createElement('div');
+                msgDiv.className = `p-1 text-sm ${isSelf ? 'text-right' : 'text-left'}`;
+                
+                const span = document.createElement('span');
+                span.className = `inline-block p-1 rounded-lg ${isSelf ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-200'}`;
+                
+                const userLabel = isSelf ? 'YOU' : msg.userId;
+                
+                span.innerHTML = `<span class="font-bold mr-1">${userLabel}:</span> ${msg.message}`;
+                msgDiv.appendChild(span);
+                chatLog.appendChild(msgDiv);
             }
+        });
+        // Scroll to bottom
+        chatLog.scrollTop = chatLog.scrollHeight;
+    }
 
-            requestAnimationFrame(gameLoop);
-        };
+    // --- ELDER DOT NPC LOGIC ---
 
-        // --- Event Handlers (Input) ---
-        
-        const handlePointerMove = (event) => {
-            // Get coordinates relative to the canvas
-            const rect = canvas.getBoundingClientRect();
-            const clientX = event.clientX || (event.touches ? event.touches[0].clientX : 0);
-            const clientY = event.clientY || (event.touches ? event.touches[0].clientY : 0);
+    function handleInteractionClick(event) {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
 
-            myX = clientX - rect.left;
-            myY = clientY - rect.top;
+        const dist = Math.sqrt(
+            Math.pow(clickX - NPC_X, 2) + Math.pow(clickY - NPC_Y, 2)
+        );
 
-            // Update the position in the database on move
-            updateMyPosition();
-        };
-        
-        // --- Initialization on Window Load ---
-        window.onload = () => {
-            canvas = document.getElementById('gameCanvas');
-            ctx = canvas.getContext('2d');
-            
-            // Set up event listeners for input
-            canvas.addEventListener('mousemove', handlePointerMove);
-            canvas.addEventListener('touchmove', handlePointerMove);
-            
-            // Load position and set center fallback
-            canvasWidth = canvas.clientWidth;
-            canvasHeight = canvas.clientHeight;
-            myX = canvasWidth / 2;
-            myY = canvasHeight / 2;
-            loadInitialPosition(); 
-
-            // Update UI status
-            document.getElementById('player-id').textContent = userId;
-            document.getElementById('game-status').classList.remove('bg-yellow-500', 'animate-pulse');
-            document.getElementById('game-status').classList.add('bg-green-500');
-            document.getElementById('status-message').textContent = "Demo Ready! Moves are saved locally.";
-            document.getElementById('player-count').textContent = "1";
-
-            // Start game loop
-            requestAnimationFrame(gameLoop);
-        };
-    </script>
-    <style>
-        .container-shadow {
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        // Check if click is within the interaction radius
+        if (dist < NPC_INTERACTION_RADIUS) {
+            openElderChatModal();
         }
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-            cursor: pointer;
-            border-radius: 0.5rem;
-        }
-    </style>
-</head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+    }
 
-    <!-- Header and Status Panel -->
-    <div class="w-full max-w-4xl mb-4">
-        <h1 class="text-4xl font-extrabold text-gray-800 mb-2">Dot Drift (Local Demo) 💾</h1>
-        <p class="text-gray-500 mb-6">This version runs entirely on your computer for error-free local use.</p>
+    function openElderChatModal() {
+        isChatModalOpen = true;
+        document.getElementById('elder-chat-modal').classList.remove('hidden');
+        // Reset chat history
+        document.getElementById('elder-chat-output').innerHTML = '<p class="text-gray-400 text-sm italic">You approach the Elder Dot. Ask a question.</p>';
+        document.getElementById('elder-chat-input').focus();
+    }
 
-        <!-- Status Bar -->
-        <div id="game-status" class="flex justify-between items-center p-3 rounded-lg shadow-md bg-yellow-500 text-white animate-pulse transition duration-500">
-            <span class="font-bold text-lg">STATUS: <span id="status-message">Loading Local Demo...</span></span>
-            <span class="text-sm">Players Online: <span id="player-count" class="font-extrabold text-xl ml-1">...</span></span>
-        </div>
-    </div>
+    function closeElderChatModal() {
+        isChatModalOpen = false;
+        document.getElementById('elder-chat-modal').classList.add('hidden');
+    }
     
-    <!-- Game Canvas and Instructions -->
-    <div class="w-full max-w-4xl bg-white container-shadow rounded-xl overflow-hidden p-2" style="height: 60vh;">
-        <canvas id="gameCanvas" class="bg-blue-50"></canvas>
-    </div>
+    function handleElderChatSubmit(event) {
+        event.preventDefault();
+        const input = document.getElementById('elder-chat-input');
+        const userQuery = input.value.trim();
 
-    <!-- Footer and User Info -->
-    <div class="w-full max-w-4xl mt-4 p-4 bg-white rounded-lg shadow-md text-sm text-gray-600">
-        <p class="font-semibold text-gray-800 mb-1">Instructions:</p>
-        <ul class="list-disc list-inside ml-4">
-            <li>Your dot is <span class="text-indigo-600 font-bold">Indigo</span>. Move your mouse or finger inside the box.</li>
-            <li>Your dot's position is **saved** in your browser and will be remembered when you reload the page.</li>
-            <li>**NOTE:** This is NOT multiplayer. It's a local demo version.</li>
-        </ul>
-        <div class="mt-3 pt-3 border-t border-gray-200">
-            <span class="font-semibold">Player ID:</span> 
-            <code id="player-id" class="ml-2 bg-gray-100 p-1 rounded text-xs text-red-700">Loading...</code>
+        if (userQuery && !isGeminiThinking) {
+            // Add user message to log
+            appendToElderLog(`> You: ${userQuery}`, 'text-yellow-400');
+            
+            // Clear input and start thinking
+            input.value = '';
+            askGemini(userQuery);
+        }
+    }
+
+    function appendToElderLog(message, color = 'text-gray-200') {
+        const log = document.getElementById('elder-chat-output');
+        const p = document.createElement('p');
+        p.className = `text-sm ${color} my-1`;
+        p.textContent = message;
+        log.appendChild(p);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    // --- GEMINI API CALL WITH BACKOFF ---
+    async function askGemini(userQuery) {
+        isGeminiThinking = true;
+        document.getElementById('elder-chat-button').textContent = 'Thinking...';
+        document.getElementById('elder-chat-button').disabled = true;
+
+        appendToElderLog('Elder Dot is meditating...', 'text-indigo-400');
+
+        // --- 1. CONSTRUCT API PAYLOAD ---
+        const apiKey = ""; 
+        const apiUrl = `${GEMINI_API_URL}${apiKey}`;
+
+        const payload = {
+            contents: [{ parts: [{ text: userQuery }] }],
+            systemInstruction: { parts: [{ text: ELDER_SYSTEM_PROMPT }] },
+            tools: [{ "google_search": {} }] // Enable grounding
+        };
+
+        const maxRetries = 5;
+        let attempt = 0;
+        let finalResponse = null;
+
+        while (attempt < maxRetries) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "The wind whispers nothing of importance now.";
+                    finalResponse = text;
+                    break; // Success
+                } else if (response.status === 429 || response.status >= 500) {
+                    // Rate limit or server error - implement exponential backoff
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                    console.warn(`Attempt ${attempt + 1} failed with status ${response.status}. Retrying in ${delay / 1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    attempt++;
+                } else {
+                    // Other non-retryable error
+                    throw new Error(`API returned status ${response.status}`);
+                }
+            } catch (error) {
+                console.error("Fetch attempt failed:", error);
+                // For client-side errors, try retrying too
+                const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                attempt++;
+            }
+        }
+
+        // --- 2. PROCESS AND DISPLAY RESPONSE ---
+        isGeminiThinking = false;
+        document.getElementById('elder-chat-button').textContent = 'Ask';
+        document.getElementById('elder-chat-button').disabled = false;
+        
+        const responseText = finalResponse || "The Elder Dot remains silent, its wisdom unreachable today. Try again later.";
+        appendToElderLog(`Elder Dot: ${responseText}`, 'text-lime-400');
+        
+        // Re-focus input after response
+        document.getElementById('elder-chat-input').focus();
+    }
+
+</script>
+
+<style>
+    /* General Styling */
+    body {
+        font-family: 'Inter', sans-serif;
+        background-color: #111827; /* Dark background */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        color: white;
+        min-height: 100vh;
+    }
+
+    .game-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 650px;
+        background-color: #1f2937;
+        border-radius: 12px;
+        box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
+        padding: 16px;
+    }
+
+    canvas {
+        border: 3px solid #4f46e5; /* Primary border color */
+        border-radius: 8px;
+        background-color: #0f172a; /* Canvas background matches body */
+        margin-bottom: 15px;
+    }
+
+    /* Chat Styling */
+    #chat-log {
+        height: 150px;
+        overflow-y: auto;
+        background-color: #1f2937;
+        border: 1px solid #374151;
+        padding: 8px;
+        margin-bottom: 10px;
+        border-radius: 6px;
+    }
+    
+    /* Modal Styling */
+    .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background-color: #1f2937;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 450px;
+        width: 90%;
+        box-shadow: 0 20px 25px rgba(0, 0, 0, 0.7);
+        border: 2px solid #6366f1;
+    }
+
+    #elder-chat-output {
+        height: 200px;
+        overflow-y: auto;
+        background-color: #0f172a;
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 15px;
+    }
+
+</style>
+
+
+</head>
+<body>
+
+<div class="game-container">
+    <h1 class="text-3xl font-bold text-indigo-400 mb-2">Dot Drift World</h1>
+    <p id="player-id-display" class="text-sm text-gray-400 mb-4"></p>
+    
+    <!-- Game Canvas -->
+    <canvas id="game-canvas" width="600" height="400"></canvas>
+
+    <!-- Global Chat Section -->
+    <div class="w-full">
+        <h2 class="text-xl font-semibold text-gray-300 mb-1">Global Chat</h2>
+        <div id="chat-log" class="text-white">
+            <!-- Messages go here -->
         </div>
+        <form id="global-chat-form" class="flex space-x-2">
+            <input type="text" id="global-chat-input" placeholder="Type a message..." required
+                   class="flex-grow p-2 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-indigo-500 focus:border-indigo-500">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200">
+                Send
+            </button>
+        </form>
     </div>
+</div>
+
+<!-- Elder Dot Chat Modal (AI Feature) -->
+<div id="elder-chat-modal" class="modal hidden">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-4 border-b pb-2 border-gray-600">
+            <h3 class="text-2xl font-bold text-lime-400">✨ Elder Dot's Wisdom</h3>
+            <button id="elder-chat-close" class="text-gray-400 hover:text-white text-3xl leading-none">
+                &times;
+            </button>
+        </div>
+        
+        <div id="elder-chat-output" class="text-gray-200">
+            <!-- Conversation log here -->
+        </div>
+
+        <form id="elder-chat-form" class="flex space-x-2">
+            <input type="text" id="elder-chat-input" placeholder="Ask the Elder Dot..." required
+                   class="flex-grow p-2 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-lime-500 focus:border-lime-500">
+            <button type="submit" id="elder-chat-button"
+                    class="bg-lime-600 hover:bg-lime-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-200">
+                Ask
+            </button>
+        </form>
+        <p class="text-xs text-gray-500 mt-2 text-center">Powered by Gemini AI. Responses are cryptic and concise.</p>
+    </div>
+</div>
+
 
 </body>
 </html>
